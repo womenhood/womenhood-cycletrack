@@ -351,7 +351,13 @@
   .alert-card .ai svg{width:17px;height:17px;}
   .alert-card .at{font-size:0.86rem; color:#6B4E1E; font-weight:700; margin-bottom:3px;}
   .alert-card .am{font-size:0.82rem; color:#7A5A24; line-height:1.5;}
-  .alert-dismiss-btn{
+  .pw-wrap{ position:relative; display:flex; align-items:center; }
+  .pw-wrap input{ flex:1; padding-right:44px; }
+  .eye-btn{
+    position:absolute; right:10px; background:none; border:none;
+    cursor:pointer; padding:4px; color:var(--muted); display:flex; align-items:center;
+  }
+  .eye-btn svg{ width:20px; height:20px; }
     background:none; border:none; color:#9C7A40; font-size:1rem;
     padding:4px 6px; cursor:pointer; flex-shrink:0; align-self:flex-start;
     border-radius:6px; line-height:1;
@@ -1769,17 +1775,38 @@ function renderSetPasswordStep(){
     <p class="sub">Choose a password for your WomenHood account.</p>
     <div class="field" id="newPwField">
       <label for="newPwInput">Password</label>
-      <input type="password" id="newPwInput" placeholder="At least 8 characters" autocomplete="new-password" />
+      <div class="pw-wrap">
+        <input type="password" id="newPwInput" placeholder="At least 8 characters" autocomplete="new-password" />
+        <button type="button" class="eye-btn" id="eyeBtn1" tabindex="-1">
+          <svg id="eyeIcon1" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
       <div class="strength"><div></div><div></div><div></div><div></div></div>
       <div class="err">Password must be at least 8 characters.</div>
     </div>
     <div class="field" id="newPw2Field">
       <label for="newPw2Input">Confirm password</label>
-      <input type="password" id="newPw2Input" placeholder="Re-enter password" autocomplete="new-password" />
+      <div class="pw-wrap">
+        <input type="password" id="newPw2Input" placeholder="Re-enter password" autocomplete="new-password" />
+        <button type="button" class="eye-btn" id="eyeBtn2" tabindex="-1">
+          <svg id="eyeIcon2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
       <div class="err">Passwords don't match.</div>
     </div>
     <button class="btn-primary" id="setPwBtn">Create account</button>
   `;
+
+  // eye toggles
+  ['1','2'].forEach(n => {
+    $('#eyeBtn'+n).addEventListener('click', () => {
+      const inp = $('#newPw'+( n==='1'?'':'2')+'Input');
+      const inp2 = n==='1' ? $('#newPwInput') : $('#newPw2Input');
+      inp2.type = inp2.type === 'password' ? 'text' : 'password';
+      $('#eyeIcon'+n).style.opacity = inp2.type === 'text' ? '0.4' : '1';
+    });
+  });
+
   const bars = $$('.strength div');
   $('#newPwInput').addEventListener('input',()=>{
     const v=$('#newPwInput').value; let score=0;
@@ -1788,6 +1815,7 @@ function renderSetPasswordStep(){
     const colors=['#D64550','#E0A858','#7C9885','#7C9885'];
     bars.forEach((b,i)=>b.style.background=i<score?colors[score-1]:'var(--line)');
   });
+
   $('#setPwBtn').addEventListener('click', async ()=>{
     const pw=$('#newPwInput').value, pw2=$('#newPw2Input').value; let ok=true;
     if(pw.length<8){ $('#newPwField').classList.add('invalid'); ok=false; } else $('#newPwField').classList.remove('invalid');
@@ -1796,7 +1824,15 @@ function renderSetPasswordStep(){
     const btn=$('#setPwBtn'); btn.disabled=true; btn.textContent='Creating account\u2026';
     const { error } = await apiUpdatePassword(pw);
     btn.disabled=false; btn.textContent='Create account';
-    if(error) return;
+    if(error){
+      // "same password" error — still proceed, user already has a session
+      if(/same|different/i.test(error.message)){
+        await handleSignedIn();
+        return;
+      }
+      toast(error.message || 'Could not set password. Please try again.');
+      return;
+    }
     await handleSignedIn();
   });
 }
