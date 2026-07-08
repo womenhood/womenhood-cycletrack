@@ -234,8 +234,11 @@
   }
   .back-link:hover{color:var(--plum);}
 
-  .otp-boxes{ display:flex; gap:8px; margin-bottom:18px; }
+  .otp-boxes{ display:flex; gap:6px; margin-bottom:18px; }
   .otp-boxes input{
+    flex:1; min-width:0; height:48px; text-align:center; font-size:1.2rem; font-weight:700;
+    border:2px solid var(--border); border-radius:10px; background:#fff;
+  }
     width:100%; text-align:center; font-size:1.3rem; font-weight:700;
     padding:12px 0; letter-spacing:0;
   }
@@ -1716,12 +1719,12 @@ function renderChoose(){
 }
 
 function _otpBoxesHtml(prefix){
-  return Array.from({length:6}).map((_,i)=>`<input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="${prefix}${i}" />`).join('');
+  return Array.from({length:8}).map((_,i)=>`<input class="otp-box" type="text" inputmode="numeric" maxlength="1" id="${prefix}${i}" />`).join('');
 }
 function _wireOtpBoxes(prefix){
-  const boxes = Array.from({length:6}).map((_,i)=>$('#'+prefix+i));
+  const boxes = Array.from({length:8}).map((_,i)=>$('#'+prefix+i));
   boxes.forEach((box,i)=>{
-    box.addEventListener('input',()=>{ box.value=box.value.replace(/\D/g,'').slice(0,1); if(box.value&&i<5) boxes[i+1].focus(); });
+    box.addEventListener('input',()=>{ box.value=box.value.replace(/\D/g,'').slice(0,1); if(box.value&&i<7) boxes[i+1].focus(); });
     box.addEventListener('keydown',e=>{ if(e.key==='Backspace'&&!box.value&&i>0) boxes[i-1].focus(); });
   });
   boxes[0].focus();
@@ -1735,7 +1738,7 @@ function renderOtpStep(){
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg> Back
     </button>
     <h2>Verify your email</h2>
-    <p class="sub">We sent a 6-digit code to <strong>${escapeHtml(s.identifier)}</strong>.</p>
+    <p class="sub">We sent an 8-digit code to <strong>${escapeHtml(s.identifier)}</strong>.</p>
     <div class="otp-boxes">${_otpBoxesHtml('otp')}</div>
     <div class="field" id="otpErrHost" style="margin-top:-8px;"><div class="err" id="otpErr">Incorrect code. Try again.</div></div>
     <button class="btn-primary" id="verifyOtpBtn">Verify</button>
@@ -1750,7 +1753,7 @@ function renderOtpStep(){
   });
   $('#verifyOtpBtn').addEventListener('click', async ()=>{
     const code=boxes.map(b=>b.value).join('');
-    if(code.length<6){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent='Enter all 6 digits.'; return; }
+    if(code.length<8){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent='Enter all 8 digits.'; return; }
     const btn=$('#verifyOtpBtn'); btn.disabled=true; btn.textContent='Verifying\u2026';
     const result = await apiVerifyOtp(s.identifier, code, 'signup');
     btn.disabled=false; btn.textContent='Verify';
@@ -1833,7 +1836,7 @@ function renderForgotOtpCodeStep(){
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg> Back
     </button>
     <h2>Enter reset code</h2>
-    <p class="sub">We sent a 6-digit code to <strong>${escapeHtml(s.identifier)}</strong>.</p>
+    <p class="sub">We sent an 8-digit code to <strong>${escapeHtml(s.identifier)}</strong>.</p>
     <div class="otp-boxes">${_otpBoxesHtml('fotp')}</div>
     <div class="field" id="fotpErrHost" style="margin-top:-8px;"><div class="err" id="fotpErr">Incorrect code. Try again.</div></div>
     <button class="btn-primary" id="verifyFotpBtn">Verify</button>
@@ -1848,7 +1851,7 @@ function renderForgotOtpCodeStep(){
   });
   $('#verifyFotpBtn').addEventListener('click', async ()=>{
     const code=boxes.map(b=>b.value).join('');
-    if(code.length<6){ $('#fotpErrHost').classList.add('invalid'); $('#fotpErr').textContent='Enter all 6 digits.'; return; }
+    if(code.length<8){ $('#fotpErrHost').classList.add('invalid'); $('#fotpErr').textContent='Enter all 8 digits.'; return; }
     const btn=$('#verifyFotpBtn'); btn.disabled=true; btn.textContent='Verifying\u2026';
     const result = await apiVerifyOtp(s.identifier, code, 'recovery');
     btn.disabled=false; btn.textContent='Verify';
@@ -2006,7 +2009,7 @@ function renderPartnerOtpStep(){
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg> Back
     </button>
     <h2>Enter the code</h2>
-    <p class="sub">We sent a 6-digit code to <strong>${escapeHtml(s.identifier)}</strong>.</p>
+    <p class="sub">We sent an 8-digit code to <strong>${escapeHtml(s.identifier)}</strong>.</p>
     <div class="otp-boxes">${_otpBoxesHtml('potp')}</div>
     <div class="field" id="potpErrHost" style="margin-top:-8px;"><div class="err" id="potpErr">Incorrect code. Try again.</div></div>
     <button class="btn-primary" id="verifyPartnerOtpBtn">Verify &amp; view updates</button>
@@ -2023,7 +2026,7 @@ function renderPartnerOtpStep(){
 
   $('#verifyPartnerOtpBtn').addEventListener('click', async () => {
     const code = boxes.map(b => b.value).join('');
-    if (code.length < 6){ $('#potpErrHost').classList.add('invalid'); $('#potpErr').textContent = 'Enter all 6 digits.'; return; }
+    if (code.length < 8){ $('#potpErrHost').classList.add('invalid'); $('#potpErr').textContent = 'Enter all 8 digits.'; return; }
 
     const btn = $('#verifyPartnerOtpBtn');
     btn.disabled = true; btn.textContent = 'Verifying…';
@@ -3589,10 +3592,6 @@ sb.auth.onAuthStateChange((event, session) => {
     startGuestSession({ skipNamePrompt: true });
   }
 })();
-</script>
-  <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>
-  eruda.init();
 </script>
 </body>
 </html>
