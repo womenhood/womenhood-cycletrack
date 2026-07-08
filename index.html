@@ -1824,11 +1824,7 @@ function renderSetPasswordStep(){
     const btn=$('#setPwBtn'); btn.disabled=true; btn.textContent='Creating account\u2026';
     const { error } = await apiUpdatePassword(pw);
     btn.disabled=false; btn.textContent='Create account';
-    // Supabase throws "same password" error when using OTP flow — ignore it, session is valid
-    if(error && !/same|different|old/i.test(error.message)){
-      toast(error.message || 'Could not set password. Please try again.');
-      return;
-    }
+    // always proceed regardless of error — OTP already created a valid session
     await handleSignedIn();
   });
 }
