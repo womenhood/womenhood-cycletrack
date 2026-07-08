@@ -1761,7 +1761,7 @@ function renderOtpStep(){
     const code=boxes.map(b=>b.value).join('');
     if(code.length<8){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent='Enter all 8 digits.'; return; }
     const btn=$('#verifyOtpBtn'); btn.disabled=true; btn.textContent='Verifying\u2026';
-    const result = await apiVerifyOtp(s.identifier, code, 'signup');
+    const result = await apiVerifyOtp(s.identifier, code, 'email');
     btn.disabled=false; btn.textContent='Verify';
     if(result==='expired'){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent='Code expired. Tap resend.'; return; }
     if(!result){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent='Incorrect code. Try again.'; return; }
