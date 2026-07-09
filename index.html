@@ -2016,7 +2016,7 @@ function renderPartnerOtpStep(){
 
   $('#verifyPartnerOtpBtn').addEventListener('click', async () => {
     const code = boxes.map(b => b.value).join('');
-    if (code.length < 8){ $('#potpErrHost').classList.add('invalid'); $('#potpErr').textContent = 'Enter all 6 digits.'; return; }
+    if (code.length < 6){ $('#potpErrHost').classList.add('invalid'); $('#potpErr').textContent = 'Enter all 6 digits.'; return; }
 
     const btn = $('#verifyPartnerOtpBtn');
     btn.disabled = true; btn.textContent = 'Verifying…';
