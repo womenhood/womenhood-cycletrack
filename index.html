@@ -1586,34 +1586,37 @@ function render(){
 
 /* ---------- Auth API helpers ---------- */
 async function apiSignUp(email){
-  try {
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true }
-    });
-    if (error){
-      toast('Error: ' + (error.message || JSON.stringify(error)), 8000);
-      return { error };
-    }
-    toast(`Code sent to ${email}. Check your inbox.`, 4000);
-    return { error: null };
-  } catch(e) {
-    toast('Catch error: ' + (e.message || String(e)), 8000);
-    return { error: e };
+  // signUp triggers a proper OTP email (not magic link)
+  const { error } = await sb.auth.signUp({
+    email,
+    password: 'wh_tmp_' + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2),
+    options: { emailRedirectTo: null }
+  });
+  if (error && !/already registered/i.test(error.message)){
+    toast('Error: ' + (error.message || 'Could not send code.'), 6000);
+    return { error };
   }
+  // for existing users, send OTP via signInWithOtp
+  if (error && /already registered/i.test(error.message)){
+    const { error: otpErr } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+    if (otpErr){ toast('Error: ' + otpErr.message, 6000); return { error: otpErr }; }
+  }
+  toast(`Verification code sent to ${email}. Check your inbox.`, 4000);
+  return { error: null };
 }
 
 async function apiVerifyOtp(email, token, type){
-  // Try 'email' type first, then 'magiclink' as fallback
-  const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
-  if (!error && (data?.session || data?.user)) return true;
-
-  const { data: data2, error: error2 } = await sb.auth.verifyOtp({ email, token, type: 'magiclink' });
-  if (!error2 && (data2?.session || data2?.user)) return true;
-
-  const finalErr = error2 || error;
-  console.error('verifyOtp errors:', error?.message, error2?.message);
-  if (finalErr && /expired/i.test(finalErr.message)) return 'expired';
+  // try 'signup' first, then 'email' as fallback
+  const attempts = [
+    { email, token, type: 'signup' },
+    { email, token, type: 'email' },
+    { email, token, type: 'magiclink' },
+  ];
+  for (const params of attempts){
+    const { data, error } = await sb.auth.verifyOtp(params);
+    if (!error && (data?.session || data?.user)) return true;
+    if (error && /expired/i.test(error.message)) return 'expired';
+  }
   return false;
 }
 
