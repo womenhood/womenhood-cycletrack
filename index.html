@@ -1596,16 +1596,13 @@ async function apiSignUp(email){
 }
 
 async function apiVerifyOtp(email, token, type){
-  // signInWithOtp sends magiclink type OTP
-  for (const t of ['magiclink', 'email', 'signup']){
-    const { data, error } = await sb.auth.verifyOtp({ email, token, type: t });
-    if (!error && (data?.session || data?.user)){
-      console.log('verified with type:', t);
-      return true;
-    }
-    if (error) console.log('type', t, 'error:', error.message);
+  const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
+  if (error){
+    console.error('verifyOtp error:', error.message, error);
+    return { success: false, message: error.message };
   }
-  return 'expired';
+  if (data?.session || data?.user) return { success: true };
+  return { success: false, message: 'Verification failed. Try again.' };
 }
 
 async function apiSignIn(email, password){
@@ -1725,8 +1722,7 @@ function renderOtpStep(){
     const btn=$('#verifyOtpBtn'); btn.disabled=true; btn.textContent='Verifying\u2026';
     const result = await apiVerifyOtp(s.identifier, code, 'email');
     btn.disabled=false; btn.textContent='Verify';
-    if(result==='expired'){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent='Code expired. Tap resend.'; return; }
-    if(!result){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent='Incorrect code. Try again.'; return; }
+    if(!result.success){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent = result.message || 'Verification failed.'; return; }
     await handleSignedIn();
   });
 }
@@ -1845,8 +1841,7 @@ function renderForgotOtpCodeStep(){
     const btn=$('#verifyFotpBtn'); btn.disabled=true; btn.textContent='Verifying\u2026';
     const result = await apiVerifyOtp(s.identifier, code, 'recovery');
     btn.disabled=false; btn.textContent='Verify';
-    if(result==='expired'){ $('#fotpErrHost').classList.add('invalid'); $('#fotpErr').textContent='Code expired. Tap resend.'; return; }
-    if(!result){ $('#fotpErrHost').classList.add('invalid'); $('#fotpErr').textContent='Incorrect code. Try again.'; return; }
+    if(!result.success){ $('#fotpErrHost').classList.add('invalid'); $('#fotpErr').textContent = result.message || 'Verification failed.'; return; }
     authState.step='resetPassword'; render();
   });
 }
@@ -2021,12 +2016,12 @@ function renderPartnerOtpStep(){
     const btn = $('#verifyPartnerOtpBtn');
     btn.disabled = true; btn.textContent = 'Verifying…';
 
-    const { data, error } = await sb.auth.verifyOtp({ email: s.identifier, token: code, type: 'email' });
+    const result = await apiVerifyOtp(s.identifier, code, 'email');
     btn.disabled = false; btn.textContent = 'Verify & view updates';
 
-    if (error){
+    if (!result.success){
       $('#potpErrHost').classList.add('invalid');
-      $('#potpErr').textContent = /expired/i.test(error.message) ? 'Code expired. Tap resend.' : 'Incorrect code. Try again.';
+      $('#potpErr').textContent = result.message || 'Verification failed.';
       return;
     }
 
