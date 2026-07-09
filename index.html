@@ -1604,14 +1604,17 @@ async function apiSignUp(email){
 }
 
 async function apiVerifyOtp(email, token, type){
-  const { data, error } = await sb.auth.verifyOtp({ email, token, type });
-  if (error){
-    console.error('verifyOtp error:', error);
-    if (/expired/i.test(error.message)) return 'expired';
-    return false;
-  }
-  // success if we got a session OR a user
-  return (data?.session || data?.user) ? true : false;
+  // Try 'email' type first, then 'magiclink' as fallback
+  const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
+  if (!error && (data?.session || data?.user)) return true;
+
+  const { data: data2, error: error2 } = await sb.auth.verifyOtp({ email, token, type: 'magiclink' });
+  if (!error2 && (data2?.session || data2?.user)) return true;
+
+  const finalErr = error2 || error;
+  console.error('verifyOtp errors:', error?.message, error2?.message);
+  if (finalErr && /expired/i.test(finalErr.message)) return 'expired';
+  return false;
 }
 
 async function apiSignIn(email, password){
