@@ -1606,10 +1606,12 @@ async function apiSignUp(email){
 async function apiVerifyOtp(email, token, type){
   const { data, error } = await sb.auth.verifyOtp({ email, token, type });
   if (error){
+    console.error('verifyOtp error:', error);
     if (/expired/i.test(error.message)) return 'expired';
     return false;
   }
-  return data?.session ? true : false;
+  // success if we got a session OR a user
+  return (data?.session || data?.user) ? true : false;
 }
 
 async function apiSignIn(email, password){
@@ -1731,7 +1733,6 @@ function renderOtpStep(){
     btn.disabled=false; btn.textContent='Verify';
     if(result==='expired'){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent='Code expired. Tap resend.'; return; }
     if(!result){ $('#otpErrHost').classList.add('invalid'); $('#otpErr').textContent='Incorrect code. Try again.'; return; }
-    // OTP verified = session created, go straight into app (no password needed)
     await handleSignedIn();
   });
 }
