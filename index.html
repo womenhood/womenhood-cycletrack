@@ -1596,13 +1596,16 @@ async function apiSignUp(email){
 }
 
 async function apiVerifyOtp(email, token, type){
-  const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
-  if (!error && (data?.session || data?.user)) return true;
-  if (error){
-    console.error('verifyOtp:', error.message);
-    if (/expired/i.test(error.message)) return 'expired';
+  // signInWithOtp sends magiclink type OTP
+  for (const t of ['magiclink', 'email', 'signup']){
+    const { data, error } = await sb.auth.verifyOtp({ email, token, type: t });
+    if (!error && (data?.session || data?.user)){
+      console.log('verified with type:', t);
+      return true;
+    }
+    if (error) console.log('type', t, 'error:', error.message);
   }
-  return false;
+  return 'expired';
 }
 
 async function apiSignIn(email, password){
