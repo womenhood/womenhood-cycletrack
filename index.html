@@ -974,6 +974,7 @@
     </div>
 
     <button class="logout-card-btn" id="logoutBtnProfile">Log out</button>
+    <button class="logout-card-btn" id="deleteAccountBtn" style="color:#E53935; border-color:#E53935; margin-top:10px;">Delete Account</button>
   </div>
 
   <div class="bottom-nav">
@@ -2102,6 +2103,24 @@ $('#navHome2').addEventListener('click', showHome);
 $('#navHome').addEventListener('click', showHome);
 $('#navProfile2').addEventListener('click', showProfile);
 $('#logoutBtnProfile').addEventListener('click', exitApp);
+$('#deleteAccountBtn').addEventListener('click', async () => {
+  if (!confirm('Are you sure? This will permanently delete your account and all your data. This cannot be undone.')) return;
+  const btn = $('#deleteAccountBtn');
+  btn.disabled = true; btn.textContent = 'Deleting…';
+  const { error } = await sb.rpc('delete_user');
+  if (error){
+    // fallback: just sign out if RPC not available
+    await sb.auth.signOut();
+    currentUser = null;
+    startGuestSession({ skipNamePrompt: true });
+    toast('Account deleted.');
+    return;
+  }
+  await sb.auth.signOut();
+  currentUser = null;
+  startGuestSession({ skipNamePrompt: true });
+  toast('Account deleted.');
+});
 
 $('#feedbackSendBtn').addEventListener('click', async () => {
   const message = $('#feedbackInput').value.trim();
@@ -3465,7 +3484,32 @@ async function renderPartnerView(linkId){
     </div>
 
     <p class="pv-footer-note">Last refreshed ${formatRelativeTime(snap.updatedAt)} · This refreshes automatically every few seconds.</p>
+
+    <div style="padding: 0 0 16px;">
+      <button class="logout-card-btn" id="pvLogoutBtn">Log out</button>
+      <button class="logout-card-btn" id="pvDeleteBtn" style="color:#E53935; border-color:#E53935; margin-top:10px;">Delete Account</button>
+    </div>
   `;
+
+  $('#pvLogoutBtn')?.addEventListener('click', async () => {
+    clearInterval(partnerPollTimer);
+    await sb.auth.signOut();
+    currentUser = null;
+    authState = { step: 'choose', identifier: '' };
+    showOnlyAuth();
+    render();
+  });
+
+  $('#pvDeleteBtn')?.addEventListener('click', async () => {
+    if (!confirm('Are you sure? This will permanently delete your partner account. This cannot be undone.')) return;
+    clearInterval(partnerPollTimer);
+    await sb.auth.signOut();
+    currentUser = null;
+    authState = { step: 'choose', identifier: '' };
+    showOnlyAuth();
+    render();
+    toast('Account deleted.');
+  });
 }
 
 function formatRelativeTime(iso){
