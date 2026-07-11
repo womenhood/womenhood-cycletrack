@@ -1295,23 +1295,6 @@ let currentUser = null; // in-memory cache of the signed-in person's profile + p
    means a brand-new email automatically becomes a new account. emailRedirectTo
    points back at this exact deployed page so clicking the link in the email
    returns here with a valid session (handled by onAuthStateChange below). */
-async function sendOtp(identifier){
-  try {
-    const { error } = await sb.auth.signInWithOtp({
-      email: identifier,
-      options: { shouldCreateUser: true }
-    });
-    if (error){
-      toast(error.message || 'Could not send the code. Please try again.');
-      return { error };
-    }
-    return { error: null };
-  } catch(e) {
-    toast('Network error. Check your connection and try again.');
-    return { error: e };
-  }
-}
-
 function googleSignIn(){
   toast('Google sign-in needs one more setup step on our end. Coming soon!');
 }
@@ -1586,9 +1569,14 @@ function render(){
 
 /* ---------- Auth API helpers ---------- */
 async function apiSignUp(email){
+  // First try signInWithOtp - works for both new and existing users
+  // shouldCreateUser:true creates account if not exists
   const { error } = await sb.auth.signInWithOtp({
     email,
-    options: { shouldCreateUser: true }
+    options: {
+      shouldCreateUser: true,
+      emailRedirectTo: undefined  // force OTP mode, not magic link
+    }
   });
   if (error){ toast('Error: ' + error.message, 6000); return { error }; }
   toast(`Verification code sent to ${email}. Check your inbox.`, 4000);
@@ -1596,9 +1584,14 @@ async function apiSignUp(email){
 }
 
 async function apiVerifyOtp(email, token, type){
-  const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
+  // type must be 'email' for signInWithOtp OTP verification
+  const { data, error } = await sb.auth.verifyOtp({
+    email,
+    token,
+    type: 'email'
+  });
   if (error){
-    console.error('verifyOtp error:', error.message, error);
+    console.error('verifyOtp error:', error.message);
     return { success: false, message: error.message };
   }
   if (data?.session || data?.user) return { success: true };
@@ -3554,7 +3547,11 @@ async function handleSignedIn(){
    supabase-js parses that automatically and fires SIGNED_IN here — this
    is what actually completes sign-in now that there's no code to type. */
 sb.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_IN' && session) handleSignedIn();
+  // Only handle magic link clicks (URL contains access_token fragment)
+  // verifyOtp() calls handleSignedIn() explicitly — don't intercept here
+  if (event === 'SIGNED_IN' && session && window.location.hash.includes('access_token')){
+    handleSignedIn();
+  }
 });
 
 (async function init(){
