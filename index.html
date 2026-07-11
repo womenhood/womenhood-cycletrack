@@ -1909,7 +1909,7 @@ function renderSetName(){
 }
 
 function renderPartnerCodeEntry(){
-  const prefillCode = (new URLSearchParams(window.location.search)).get('partner') || '';
+  const prefillCode = authState.partnerCode || (new URLSearchParams(window.location.search)).get('partner') || '';
   authCard.innerHTML = `
     <button class="back-link" id="partnerCodeBackBtn">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -3559,13 +3559,21 @@ sb.auth.onAuthStateChange((event, session) => {
 });
 
 (async function init(){
-  // An invite link (?partner=CODE) takes priority over everything else —
-  // someone opening that link wants the read-only partner view, not their
-  // own account or guest session.
+  // An invite link (?partner=CODE) — show partner login screen, not direct view
   const params = new URLSearchParams(window.location.search);
   const inviteCode = params.get('partner');
   if (inviteCode){
-    enterPartnerView(inviteCode.toUpperCase());
+    // Check if already logged in as a partner-linked account
+    const { data: { session } } = await sb.auth.getSession();
+    if (session){
+      // Already logged in — go straight to partner view
+      enterPartnerView(inviteCode.toUpperCase());
+    } else {
+      // Not logged in — show partner login with code pre-filled
+      authState = { step: 'choose', identifier: '', partnerCode: inviteCode.toUpperCase() };
+      showOnlyAuth();
+      renderPartnerCodeEntry();
+    }
     return;
   }
 
