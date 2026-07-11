@@ -1569,29 +1569,33 @@ function render(){
 
 /* ---------- Auth API helpers ---------- */
 async function apiSignUp(email){
-  // First try signInWithOtp - works for both new and existing users
-  // shouldCreateUser:true creates account if not exists
-  const { error } = await sb.auth.signInWithOtp({
+  console.log("SEND OTP", email);
+  const { data, error } = await sb.auth.signInWithOtp({
     email,
     options: {
       shouldCreateUser: true,
-      emailRedirectTo: undefined  // force OTP mode, not magic link
+      emailRedirectTo: undefined
     }
   });
+  console.log("SEND RESULT", { data, error });
   if (error){ toast('Error: ' + error.message, 6000); return { error }; }
   toast(`Verification code sent to ${email}. Check your inbox.`, 4000);
   return { error: null };
 }
 
 async function apiVerifyOtp(email, token, type){
-  // type must be 'email' for signInWithOtp OTP verification
-  const { data, error } = await sb.auth.verifyOtp({
-    email,
-    token,
-    type: 'email'
-  });
+  const sessionBefore = await sb.auth.getSession();
+  console.log("SESSION BEFORE VERIFY", sessionBefore);
+
+  console.log("VERIFY OTP", { email, token, type });
+  const { data, error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
+  console.log("VERIFY RESULT", { data, error });
+
+  const sessionAfter = await sb.auth.getSession();
+  console.log("SESSION AFTER VERIFY", sessionAfter);
+
   if (error){
-    console.error('verifyOtp error:', error.message);
+    console.error("VERIFY ERROR FULL", JSON.stringify(error));
     return { success: false, message: error.message };
   }
   if (data?.session || data?.user) return { success: true };
