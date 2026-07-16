@@ -3010,10 +3010,15 @@ function renderAvatarVisual(){
 
 function renderProfile(){
   const u = currentUser;
+
+  // In partner view, show partner's real email, not the main user's
+  const displayEmail = u._isPartnerView ? u._partnerRealEmail : (u.isGuest ? 'Guest (data stays on this device)' : u.identifier);
+  const displayMethod = u._isPartnerView ? 'Email' : (u.isGuest ? 'Guest (no account)' : (u.method === 'google' ? 'Google' : 'Email'));
+
   $('#profileName').textContent = u.name || 'Add your name';
-  $('#profileIdentifier').textContent = u.isGuest ? 'Guest (data stays on this device)' : u.identifier;
+  $('#profileIdentifier').textContent = displayEmail;
   $('#nameInput').value = u.name || '';
-  $('#profileMethod').textContent = u.isGuest ? 'Guest (no account)' : (u.method === 'google' ? 'Google' : 'Email');
+  $('#profileMethod').textContent = displayMethod;
   $('#profileAvgCycle').textContent = (u.periods.length >= 2) ? `${u.avgCycle} days` : '— days';
   $('#profileLoggedCount').textContent = u.periods.length;
   renderAvatarVisual();
@@ -3021,6 +3026,26 @@ function renderProfile(){
   syncSettingsUI();
   renderAvatarColorGrid();
   renderPartnerCard();
+
+  // In partner view, swap logout button to partner logout
+  if (u._isPartnerView){
+    const logoutBtn = $('#logoutBtnProfile');
+    if (logoutBtn){
+      const newBtn = logoutBtn.cloneNode(true);
+      logoutBtn.parentNode.replaceChild(newBtn, logoutBtn);
+      newBtn.addEventListener('click', u._partnerLogout);
+    }
+    const deleteBtn = $('#deleteAccountBtn');
+    if (deleteBtn){
+      const newDel = deleteBtn.cloneNode(true);
+      deleteBtn.parentNode.replaceChild(newDel, deleteBtn);
+      newDel.addEventListener('click', async () => {
+        if (!confirm('Are you sure? This will permanently delete your partner account.')) return;
+        await u._partnerLogout();
+        toast('Account deleted.');
+      });
+    }
+  }
 }
 
 function renderAvatarColorGrid(){
@@ -3418,6 +3443,7 @@ async function readPartnerSnapshot(code){
   }
 
   return {
+    ownerId: profileRow.id,
     name: profileRow.name || 'your partner',
     padStock: profileRow.pad_stock ?? 0,
     avgCycle,
@@ -3433,249 +3459,68 @@ async function readPartnerSnapshot(code){
 
 async function renderPartnerView(linkId){
   const snap = await readPartnerSnapshot(linkId);
-  const host = $('#partnerViewMain');
-
   if (!snap){
-    host.innerHTML = `
+    $('#partnerViewMain').innerHTML = `
       <div style="text-align:center; padding:60px 20px;">
         <div style="font-size:2rem; margin-bottom:12px;">💌</div>
-        <h2 style="color:var(--plum);">Code not found</h2>
+        <h2 style="color:var(--plum); margin:0 0 8px;">Code not found</h2>
         <p style="color:var(--muted); font-size:0.88rem;">Double-check the code with your partner.</p>
       </div>`;
     return;
   }
 
+  // Save the real partner (logged-in user) identity
+  const partnerEmail = currentUser?.identifier || '';
+  const partnerSettings = currentUser?.settings || {};
+
+  // Temporarily inject partner's (main user's) data into currentUser
+  // so all existing render functions work unchanged
+  const savedUser = currentUser;
+  currentUser = {
+    id: snap.ownerId || null,
+    identifier: partnerEmail,      // keep partner's own email
+    isGuest: false,
+    name: snap.name + "'s Partner",
+    avatarColor: savedUser?.avatarColor || 'rose',
+    avatarPhoto: null,
+    periods: snap.periods || [],
+    avgCycle: snap.avgCycle || 28,
+    padStock: snap.padStock ?? 0,
+    partnerLinkId: null,
+    notifications: savedUser?.notifications || [],
+    settings: partnerSettings,
+    checkIn: { startDelayDays:0, startLastAskedDate:null, endDelayDays:0, endLastAskedDate:null },
+    _dismissedAlerts: {},
+    _isPartnerView: true,           // flag so profile can show right email/name
+    _partnerRealEmail: partnerEmail,
+    _partnerLogout: async () => {
+      clearInterval(partnerPollTimer);
+      await sb.auth.signOut();
+      currentUser = null;
+      authState = { step:'choose', identifier:'' };
+      showOnlyAuth(); render();
+    }
+  };
+
   setTheme(snap.phaseKey || 'follicular');
 
-  // show appWrap-style content inside partner container
-  // by cloning same HTML structure
-  const periods = snap.periods || [];
-  const avgCycle = snap.avgCycle || 28;
-  const avgPeriodLen = 5;
-  const padStock = snap.padStock ?? 0;
-  const cd = snap.cycleDayMod || 1;
-  const phaseKey = snap.phaseKey || 'follicular';
-  const phaseColors = { period:'#FF4D6D', follicular:'#2D9CFF', ovulation:'#FF4FB8', luteal:'#FFA726' };
-  const phaseLabels = { period:'PERIOD', follicular:'FOLLICULAR', ovulation:'OVULATION', luteal:'LUTEAL' };
-  const phaseColor = phaseColors[phaseKey];
-  const phaseLabel = phaseLabels[phaseKey];
+  // Show the SAME appWrap — just swap which wrap is visible
+  $('#authWrap').style.display   = 'none';
+  $('#partnerViewWrap').style.display = 'none';
+  $('#detailWrap').style.display = 'none';
+  $('#profileWrap').style.display = 'none';
+  $('#appWrap').style.display    = 'flex';
+  $('#notifWrap').style.display  = 'none';
 
-  // ring
-  const ovDay = Math.max(avgPeriodLen+2, avgCycle-14);
-  const fertStart = Math.max(avgPeriodLen+1, ovDay-4);
-  const fertEnd = ovDay+1;
-  function afd(d){ return ((d-1)/avgCycle)*360-90; }
-  function d2r(d){ return d*Math.PI/180; }
-  function arc(cx,cy,r,s,e,col){
-    const sr=d2r(s),er=d2r(e);
-    const x1=cx+r*Math.cos(sr),y1=cy+r*Math.sin(sr),x2=cx+r*Math.cos(er),y2=cy+r*Math.sin(er);
-    return `<path d="M${x1},${y1} A${r},${r},0,${((e-s+360)%360)>180?1:0},1,${x2},${y2}" stroke="${col}" stroke-width="28" fill="none" stroke-linecap="round"/>`;
-  }
-  const cx=140,cy=140,r=110;
-  let ring='<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" stroke="rgba(0,0,0,0.06)" stroke-width="28" fill="none"/>';
-  [[1,avgPeriodLen,'#FF4D6D'],[avgPeriodLen+1,fertStart-1,'#2D9CFF'],[fertStart,fertEnd,'#FF4FB8'],[fertEnd+1,avgCycle,'#FFA726']].forEach(([f,t,c])=>{
-    if(f>avgCycle||t<1) return;
-    ring+=arc(cx,cy,r,afd(Math.max(f,1)),afd(Math.min(t,avgCycle)+0.9),c);
-  });
-  for(let i=0;i<4;i++){const a=d2r(-90+i*90);ring+=`<line x1="${cx+(r-18)*Math.cos(a)}" y1="${cy+(r-18)*Math.sin(a)}" x2="${cx+(r+18)*Math.cos(a)}" y2="${cy+(r+18)*Math.sin(a)}" stroke="rgba(0,0,0,0.12)" stroke-width="1.5"/>`;}
-  const da=d2r(afd(cd));
-  ring+=`<circle cx="${cx+r*Math.cos(da)}" cy="${cy+r*Math.sin(da)}" r="10" fill="#1a1a2e" stroke="#fff" stroke-width="3"/>`;
+  // Suppress the sign-in button (partner is signed in)
+  $('#headerSignInBtn').style.display = 'none';
 
-  // stats
-  let eta='—';
-  if(snap.daysUntilNext!=null){
-    if(snap.daysUntilNext<=0) eta='Any day now';
-    else if(snap.daysUntilNext===1) eta='Tomorrow';
-    else eta=`In ${snap.daysUntilNext} days (est.)`;
-  }
+  // Run the exact same render as the main user
+  syncSettingsUI();
+  renderCycle();
 
-  // history
-  const sorted=[...periods].sort((a,b)=>new Date(b.start)-new Date(a.start));
-  function fd(d){return d?new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):''}
-  function db(a,b){return Math.round((new Date(b)-new Date(a))/86400000);}
-  const hist=sorted.length?sorted.map(p=>{
-    const s=new Date(p.start).toLocaleDateString(undefined,{month:'short',day:'numeric'});
-    const label=p.end?`${s} – ${fd(p.end)}`:`${s}, ${new Date(p.start).getFullYear()}`;
-    const len=p.end?`${db(p.start,p.end)+1}-day period`:'In progress';
-    return `<div class="history-item" style="pointer-events:none;"><span class="dates">${escapeHtml(label)}</span><span class="len">${escapeHtml(len)}</span></div>`;
-  }).join(''):'<div class="history-empty">No periods logged yet.</div>';
-
-  const initial=(snap.name||'?')[0].toUpperCase();
-
-  // ── HOME: exact same HTML as #appWrap ──
-  const homeHTML=`
-<div style="padding-bottom:80px;">
-  <p class="greeting" style="padding:0 22px 8px;">Hi, <strong>${escapeHtml(snap.name)}'s Partner 👋</strong></p>
-
-  <div class="ring-section">
-    <div class="ring-wrap">
-      <svg viewBox="0 0 280 280" style="width:100%;max-width:300px;">${ring}
-        <text x="${cx}" y="${cy-18}" text-anchor="middle" font-size="11" font-weight="700" fill="${phaseColor}" font-family="Inter,sans-serif" letter-spacing="1.5">${phaseLabel}</text>
-        <text x="${cx}" y="${cy+32}" text-anchor="middle" font-size="52" font-weight="700" fill="#1a1a2e" font-family="Fraunces,serif">Day ${cd}</text>
-        <text x="${cx}" y="${cy+54}" text-anchor="middle" font-size="12" fill="rgba(0,0,0,0.45)" font-family="Inter,sans-serif">Day ${cd} of ${phaseKey}</text>
-      </svg>
-    </div>
-    <div class="phase-legend">
-      <span><span class="dot" style="background:#FF4D6D"></span>Period</span>
-      <span><span class="dot" style="background:#2D9CFF"></span>Follicular</span>
-      <span><span class="dot" style="background:#FF4FB8"></span>Ovulation</span>
-      <span><span class="dot" style="background:#FFA726"></span>Luteal</span>
-    </div>
-  </div>
-
-  <div class="stats-grid">
-    <div class="stat-card"><div class="stat-label">NEXT PERIOD</div><div class="stat-value">${escapeHtml(eta)}</div></div>
-    <div class="stat-card"><div class="stat-label">AVG CYCLE LENGTH</div><div class="stat-value">${avgCycle} days</div></div>
-  </div>
-
-  <div class="stats-grid" style="margin-top:0;">
-    <div class="stat-card">
-      <div class="pad-stock-mini">
-        <div class="pad-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="8" width="18" height="10" rx="3"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg></div>
-        <div><div class="stat-label">PADS IN STOCK</div><div class="stat-value">${padStock}</div>${padStock<5?'<div class="pad-low">Running low</div>':''}</div>
-      </div>
-    </div>
-    <div class="stat-card">
-      <div class="pad-stock-mini">
-        <div class="pad-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M8 14s-2 1-2 4h12c0-3-2-4-2-4"/></svg></div>
-        <div><div class="stat-label">MOOD</div><div class="stat-value">—</div></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="stat-card" style="margin:0 16px 12px;">
-    <div class="pad-stock-mini">
-      <div class="pad-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c4.97 0 9-4.03 9-9-4.97 0-9 4.03-9 9z"/><path d="M12 22C7.03 22 3 17.97 3 13c4.97 0 9 4.03 9 9z"/></svg></div>
-      <div><div class="stat-label">PERIOD FLOW</div><div class="stat-value">—</div></div>
-    </div>
-  </div>
-
-  <div class="section-hd" style="padding:0 22px;margin-top:8px;"><span>CYCLE HISTORY</span></div>
-  <div class="history-list" style="padding:0 16px;">${hist}</div>
-</div>`;
-
-  // ── PROFILE: exact same HTML as #profileWrap ──
-  const profileHTML=`
-<div>
-  <div class="profile-header">
-    <div class="avatar-wrap">
-      <div class="avatar" style="background:linear-gradient(135deg,#FF4D6D,#FF4FB8);color:#fff;font-size:2rem;font-weight:700;width:80px;height:80px;border-radius:50%;display:flex;align-items:center;justify-content:center;">${escapeHtml(initial)}</div>
-    </div>
-    <div class="pname">${escapeHtml(snap.name)}'s Partner</div>
-    <div class="pemail">${escapeHtml(currentUser?.identifier||'')}</div>
-  </div>
-
-  <div class="profile-body">
-    <div class="profile-card">
-      <div class="card-title">PAD STOCK</div>
-      <div class="info-row">
-        <span class="ilabel">Currently in stock</span>
-        <div style="display:flex;align-items:center;gap:12px;">
-          <button class="step-btn" id="pvPadMinus">−</button>
-          <span class="ival" id="pvPadCount" style="min-width:24px;text-align:center;">${padStock}</span>
-          <button class="step-btn" id="pvPadPlus">+</button>
-        </div>
-      </div>
-      <div class="toggle-row">
-        <div><div class="tlabel">Low stock alerts</div><div class="tdesc">Warn me (and partner, if linked) under 5 pads</div></div>
-        <label class="toggle"><input type="checkbox" id="pvLowStock" ${padStock<5?'checked':''}><span class="slider"></span></label>
-      </div>
-    </div>
-
-    <div class="profile-card">
-      <div class="card-title">NOTIFICATIONS</div>
-      <div class="toggle-row"><div><div class="tlabel">Period reminders</div><div class="tdesc">Get notified a few days before your period</div></div><label class="toggle"><input type="checkbox" checked><span class="slider"></span></label></div>
-      <div class="divider-line"></div>
-      <div class="toggle-row"><div><div class="tlabel">Ovulation reminders</div><div class="tdesc">Get notified during your fertile window</div></div><label class="toggle"><input type="checkbox" checked><span class="slider"></span></label></div>
-      <div class="divider-line"></div>
-      <div class="toggle-row"><div><div class="tlabel">Log reminders</div><div class="tdesc">Daily nudge to log symptoms or flow</div></div><label class="toggle"><input type="checkbox"><span class="slider"></span></label></div>
-      <div class="divider-line"></div>
-      <div class="toggle-row"><div><div class="tlabel">Period check-in prompts</div><div class="tdesc">Ask "Did your period start/end?" on each visit</div></div><label class="toggle"><input type="checkbox" checked><span class="slider"></span></label></div>
-      <div class="divider-line"></div>
-      <div class="toggle-row"><div><div class="tlabel">Push notifications</div><div class="tdesc">Get phone notifications (requires browser permission)</div></div><label class="toggle"><input type="checkbox" checked><span class="slider"></span></label></div>
-    </div>
-
-    <div class="profile-card">
-      <div class="info-row"><span class="ilabel">Signed in with</span><span class="ival">Email</span></div>
-      <div class="info-row"><span class="ilabel">Average cycle length</span><span class="ival">${avgCycle} days</span></div>
-      <div class="info-row"><span class="ilabel">Periods logged</span><span class="ival">${periods.length}</span></div>
-    </div>
-
-    <div class="profile-card">
-      <div class="card-title">CONTACT</div>
-      <a href="mailto:supportwomenhood@gmail.com" class="contact-row">
-        <div class="contact-icon" style="background:#FFF0F3;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF4D6D" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
-        <div><div class="contact-label">EMAIL</div><div class="contact-val">supportwomenhood@gmail.com</div></div>
-      </a>
-      <div class="divider-line"></div>
-      <a href="https://instagram.com/womenhood.cycletrack" target="_blank" class="contact-row">
-        <div class="contact-icon" style="background:#FFF0F3;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FF4D6D" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="#FF4D6D"/></svg></div>
-        <div><div class="contact-label">INSTAGRAM</div><div class="contact-val">@womenhood.cycletrack</div></div>
-      </a>
-    </div>
-
-    <div class="profile-card">
-      <div class="card-title">FEEDBACK</div>
-      <div class="tdesc" style="margin-bottom:12px;">Something not working, or an idea for a feature? Let us know.</div>
-      <textarea id="pvFeedbackInput" class="feedback-textarea" placeholder="Type your feedback here..." maxlength="1000"></textarea>
-      <button class="save-name-btn" id="pvFeedbackBtn" style="width:100%;margin-top:10px;">Send feedback</button>
-    </div>
-
-    <button class="logout-card-btn" id="pvLogoutBtn">Log out</button>
-    <button class="logout-card-btn" id="pvDeleteBtn" style="margin-top:10px;margin-bottom:80px;">Delete Account</button>
-  </div>
-</div>`;
-
-  host.innerHTML=`
-    <div id="pvContent">${homeHTML}</div>
-    <div class="bottom-nav" style="position:fixed;bottom:0;left:0;right:0;z-index:100;background:#fff;">
-      <button class="nav-btn active" id="pvNavHome">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
-        Home
-      </button>
-      <button class="nav-btn" id="pvNavProfile">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        Profile
-      </button>
-    </div>`;
-
-  $('#pvNavHome').addEventListener('click',()=>{
-    $('#pvContent').innerHTML=homeHTML;
-    $('#pvNavHome').classList.add('active');
-    $('#pvNavProfile').classList.remove('active');
-  });
-  $('#pvNavProfile').addEventListener('click',()=>{
-    $('#pvContent').innerHTML=profileHTML;
-    $('#pvNavProfile').classList.add('active');
-    $('#pvNavHome').classList.remove('active');
-    wirePvProfile();
-  });
-
-  function wirePvProfile(){
-    $('#pvFeedbackBtn')?.addEventListener('click',async()=>{
-      const txt=$('#pvFeedbackInput')?.value?.trim();
-      if(!txt){toast('Please type your feedback first.');return;}
-      await sb.from('feedback').insert({user_id:currentUser?.id||null,message:txt});
-      toast('Feedback sent. Thank you!');
-      if($('#pvFeedbackInput')) $('#pvFeedbackInput').value='';
-    });
-    $('#pvLogoutBtn')?.addEventListener('click',async()=>{
-      clearInterval(partnerPollTimer);
-      await sb.auth.signOut();
-      currentUser=null;
-      authState={step:'choose',identifier:''};
-      showOnlyAuth();render();
-    });
-    $('#pvDeleteBtn')?.addEventListener('click',async()=>{
-      if(!confirm('Are you sure? This will permanently delete your partner account.')) return;
-      clearInterval(partnerPollTimer);
-      await sb.auth.signOut();
-      currentUser=null;
-      authState={step:'choose',identifier:''};
-      showOnlyAuth();render();
-      toast('Account deleted.');
-    });
-  }
+  // Restore real currentUser in background so auth still works
+  // (We keep the patched version while partner view is active)
 }
 
 
@@ -3692,11 +3537,6 @@ function formatRelativeTime(iso){
 
 let partnerPollTimer = null;
 function enterPartnerView(code){
-  $('#authWrap').style.display = 'none';
-  $('#appWrap').style.display = 'none';
-  $('#profileWrap').style.display = 'none';
-  $('#detailWrap').style.display = 'none';
-  $('#partnerViewWrap').style.display = 'flex';
   renderPartnerView(code);
   clearInterval(partnerPollTimer);
   partnerPollTimer = setInterval(() => renderPartnerView(code), 4000);
