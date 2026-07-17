@@ -981,7 +981,7 @@
     </div>
 
     <button class="logout-card-btn" id="logoutBtnProfile">Log out</button>
-    <button class="logout-card-btn" id="deleteAccountBtn" style="color:#E53935; border-color:#E53935; margin-top:10px;">Delete Account</button>
+    <button class="logout-card-btn" id="deleteAccountBtn" style="margin-top:10px;">Delete Account</button>
   </div>
 
   <div class="bottom-nav">
@@ -3014,12 +3014,17 @@ function renderProfile(){
   if (u._isPartnerView){
     // ── READ-ONLY Partner Profile ──
     const initial = (u.name||'?')[0].toUpperCase();
+    const avatarColors = { rose:'linear-gradient(135deg,#FF4D6D,#FF4FB8)', plum:'linear-gradient(135deg,#7C3AED,#A78BFA)', sky:'linear-gradient(135deg,#2D9CFF,#7FD3FF)', peach:'linear-gradient(135deg,#FFA726,#FFD54F)', sage:'linear-gradient(135deg,#7C9885,#B2D8B2)' };
+    const avatarBg = u._savedUser?.avatarPhoto ? null : (avatarColors[u._savedUser?.avatarColor || 'rose'] || avatarColors.rose);
+    const avatarHtml = u._savedUser?.avatarPhoto
+      ? `<img src="${escapeHtml(u._savedUser.avatarPhoto)}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;" />`
+      : `<div class="avatar" style="background:${avatarBg};color:#fff;font-size:2rem;font-weight:700;">${escapeHtml(initial)}</div>`;
     const avgCycleText = (u.periods.length >= 2) ? `${u.avgCycle} days` : '— days';
     const host = $('#profileWrap');
     host.innerHTML = `
       <div class="profile-header">
         <div class="avatar-wrap">
-          <div class="avatar" style="background:linear-gradient(135deg,#FF4D6D,#FF4FB8);color:#fff;font-size:2rem;font-weight:700;">${escapeHtml(initial)}</div>
+          ${avatarHtml}
         </div>
         <div class="pname">${escapeHtml(u.name)}'s Partner</div>
         <div class="pemail">${escapeHtml(u._partnerRealEmail)}</div>
@@ -3577,35 +3582,99 @@ async function renderPartnerView(linkId){
   $('#appWrap').style.display     = 'flex';
   $('#headerSignInBtn').style.display = 'none';
 
-  // ── Add "Partner's View" badge next to bell ──
-  if (!$('#pvBadge')){
-    const badge = document.createElement('span');
-    badge.id = 'pvBadge';
-    badge.textContent = "Partner's View";
-    badge.style.cssText = 'font-size:0.7rem;font-weight:600;color:var(--accent);background:var(--accent-soft);padding:3px 8px;border-radius:20px;margin-right:8px;white-space:nowrap;';
-    $('#bellBtn').parentNode.insertBefore(badge, $('#bellBtn'));
-  }
-
   // ── Render using EXACT SAME functions ──
   renderCycle();
 
-  // Override greeting with partner-style greeting
+  // ── Override greeting ──
   $('#greetingText').innerHTML = `Hi, <strong>${escapeHtml(snap.name)}'s Partner 👋</strong>`;
 
+  // ── Add "Partner's View" badge with card outline ──
+  if (!$('#pvBadge')){
+    const badge = document.createElement('div');
+    badge.id = 'pvBadge';
+    badge.textContent = "Partner's View";
+    badge.style.cssText = 'font-size:0.68rem;font-weight:700;color:var(--accent);background:#fff;padding:4px 10px;border-radius:20px;border:1.5px solid var(--accent);margin-right:8px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.08);letter-spacing:0.02em;';
+    $('#bellBtn').parentNode.insertBefore(badge, $('#bellBtn'));
+  }
+
   // ── HIDE all editing controls ──
-  // Period start/end buttons
-  const hideIds = ['logStartBtn','logEndBtn'];
+  const hideIds = ['logStartBtn','logEndBtn','padMinusBtn','padPlusBtn'];
   hideIds.forEach(id => { const el = $('#'+id); if(el) el.style.display='none'; });
-
-  // Pad stock +/- buttons
-  $$('.pad-btn, #padMinus, #padPlus, [id*="padMinus"], [id*="padPlus"]').forEach(el => el.style.display='none');
-
-  // Check-in cards (read-only — just hide the whole check-in prompt)
+  $$('.alert-dismiss-btn').forEach(el => el.style.display='none');
   const checkInHost = $('#checkInHost');
   if(checkInHost) checkInHost.innerHTML = '';
 
-  // Alert/irregularity dismiss buttons
-  $$('.alert-dismiss-btn').forEach(el => el.style.display='none');
+  // ── Disable history item taps (no detail view for partner) ──
+  $$('#historyList .history-item').forEach(btn => {
+    const nb = btn.cloneNode(true);
+    nb.style.cssText += ';cursor:default;pointer-events:none;';
+    const chev = nb.querySelector('.chev');
+    if(chev) chev.style.display = 'none';
+    btn.parentNode.replaceChild(nb, btn);
+  });
+
+  // ── Split pad-card into 2-column: Pads in stock | Period flow ──
+  const padCard = document.querySelector('.pad-card');
+  if(padCard && !padCard.dataset.pvSplit){
+    padCard.dataset.pvSplit = '1';
+    padCard.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:0;padding:0;overflow:hidden;background:transparent;box-shadow:none;border-radius:0;';
+    // left: pads
+    const leftCard = document.createElement('div');
+    leftCard.className = 'stat-card';
+    leftCard.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    leftCard.innerHTML = `
+      <div class="picon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="8" width="18" height="10" rx="3"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg></div>
+      <div>
+        <div class="stat-label">PADS IN STOCK</div>
+        <div class="stat-value" id="padStockVal2">${snap.padStock ?? 0}</div>
+        ${(snap.padStock??0)<5?'<div class="pad-low">Running low</div>':''}
+      </div>`;
+    // right: period flow
+    const rightCard = document.createElement('div');
+    rightCard.className = 'stat-card';
+    rightCard.style.cssText = 'display:flex;align-items:center;gap:10px;';
+    rightCard.innerHTML = `
+      <div class="picon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c0 6-6 8-6 14a6 6 0 0 0 12 0c0-6-6-8-6-14z"/></svg></div>
+      <div>
+        <div class="stat-label">PERIOD FLOW</div>
+        <div class="stat-value">—</div>
+      </div>`;
+    padCard.innerHTML = '';
+    padCard.appendChild(leftCard);
+    padCard.appendChild(rightCard);
+  }
+
+  // ── Override navProfile to stay stable in partner view ──
+  const pvShowProfile = () => {
+    $('#appWrap').style.display = 'none';
+    $('#profileWrap').style.display = 'flex';
+    renderProfile();
+  };
+  // replace nav handlers for partner
+  ['navProfile','navProfile2'].forEach(id => {
+    const btn = $('#'+id);
+    if(btn){
+      const nb = btn.cloneNode(true);
+      btn.parentNode.replaceChild(nb, btn);
+      nb.addEventListener('click', pvShowProfile);
+    }
+  });
+  ['navHome','navHome2'].forEach(id => {
+    const btn = $('#'+id);
+    if(btn){
+      const nb = btn.cloneNode(true);
+      btn.parentNode.replaceChild(nb, btn);
+      nb.addEventListener('click', () => {
+        $('#profileWrap').style.display='none';
+        $('#appWrap').style.display='flex';
+        $('#greetingText').innerHTML = `Hi, <strong>${escapeHtml(snap.name)}'s Partner 👋</strong>`;
+        const hids = ['logStartBtn','logEndBtn','padMinusBtn','padPlusBtn'];
+        hids.forEach(id2 => { const el=$('#'+id2); if(el) el.style.display='none'; });
+        $$('.alert-dismiss-btn').forEach(el => el.style.display='none');
+        if($('#checkInHost')) $('#checkInHost').innerHTML='';
+      });
+    }
+  });
 }
 
 
