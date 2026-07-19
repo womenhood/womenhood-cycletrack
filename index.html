@@ -3579,7 +3579,7 @@ async function renderPartnerView(linkId){
   }
 
   // Save real partner identity
-  if (!currentUser._isPartnerView) {
+  if (!currentUser?._isPartnerView) {
     const savedUser = currentUser;
     const partnerEmail = savedUser?.identifier || '';
     const partnerLogout = async () => {
@@ -3775,6 +3775,18 @@ async function handleSignedIn(){
   if (!currentUser.name){
     authState.step = 'setName';
     render();
+  } else if (profile.partner_of) {
+    // This user is a partner — find the owner's partner_code and show partner view
+    const { data: ownerProfile } = await sb
+      .from('profiles')
+      .select('partner_code, name')
+      .eq('id', profile.partner_of)
+      .maybeSingle();
+    if (ownerProfile?.partner_code){
+      enterPartnerView(ownerProfile.partner_code);
+    } else {
+      enterApp(); // fallback
+    }
   } else {
     enterApp();
   }
