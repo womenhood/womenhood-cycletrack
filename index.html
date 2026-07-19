@@ -3002,16 +3002,18 @@ function renderProfile(){
   const u = currentUser;
 
   if (u._isPartnerView){
-    // ── READ-ONLY Partner Profile ──
+    // Partner profile — read-only, same visual as main user
     const initial = (u.name||'?')[0].toUpperCase();
     const avatarColors = { rose:'linear-gradient(135deg,#FF4D6D,#FF4FB8)', plum:'linear-gradient(135deg,#7C3AED,#A78BFA)', sky:'linear-gradient(135deg,#2D9CFF,#7FD3FF)', peach:'linear-gradient(135deg,#FFA726,#FFD54F)', sage:'linear-gradient(135deg,#7C9885,#B2D8B2)' };
-    const avatarBg = u._savedUser?.avatarPhoto ? null : (avatarColors[u._savedUser?.avatarColor || 'rose'] || avatarColors.rose);
-    const avatarHtml = u._savedUser?.avatarPhoto
-      ? `<img src="${escapeHtml(u._savedUser.avatarPhoto)}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;" />`
+    const savedU = u._savedUser || {};
+    const avatarBg = avatarColors[savedU.avatarColor || 'rose'] || avatarColors.rose;
+    const avatarHtml = savedU.avatarPhoto
+      ? `<img src="${escapeHtml(savedU.avatarPhoto)}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;" />`
       : `<div class="avatar" style="background:${avatarBg};color:#fff;font-size:2rem;font-weight:700;">${escapeHtml(initial)}</div>`;
     const avgCycleText = (u.periods.length >= 2) ? `${u.avgCycle} days` : '— days';
-    const host = $('#profileWrap');
-    host.innerHTML = `
+    const s = u.settings || {};
+
+    $('#profileWrap').innerHTML = `
       <div class="profile-header">
         <div class="avatar-wrap">
           ${avatarHtml}
@@ -3020,11 +3022,41 @@ function renderProfile(){
         <div class="pemail">${escapeHtml(u._partnerRealEmail)}</div>
       </div>
       <div class="profile-body">
+
+        <div class="profile-card">
+          <div class="card-title">NOTIFICATIONS</div>
+          <div class="toggle-row">
+            <div><div class="tlabel">Period reminders</div><div class="tdesc">Get notified a few days before your partner's period</div></div>
+            <label class="toggle"><input type="checkbox" id="pvNotifPeriod" ${s.period!==false?'checked':''}><span class="slider"></span></label>
+          </div>
+          <div class="divider-line"></div>
+          <div class="toggle-row">
+            <div><div class="tlabel">Ovulation reminders</div><div class="tdesc">Get notified during fertile window</div></div>
+            <label class="toggle"><input type="checkbox" id="pvNotifOvulation" ${s.ovulation!==false?'checked':''}><span class="slider"></span></label>
+          </div>
+          <div class="divider-line"></div>
+          <div class="toggle-row">
+            <div><div class="tlabel">Log reminders</div><div class="tdesc">Daily nudge to log symptoms or flow</div></div>
+            <label class="toggle"><input type="checkbox" id="pvNotifDaily" ${s.daily?'checked':''}><span class="slider"></span></label>
+          </div>
+          <div class="divider-line"></div>
+          <div class="toggle-row">
+            <div><div class="tlabel">Period check-in prompts</div><div class="tdesc">Ask "Did your period start/end?" on each visit</div></div>
+            <label class="toggle"><input type="checkbox" id="pvNotifCheckin" ${s.checkin!==false?'checked':''}><span class="slider"></span></label>
+          </div>
+          <div class="divider-line"></div>
+          <div class="toggle-row">
+            <div><div class="tlabel">Push notifications</div><div class="tdesc">Get phone notifications (requires browser permission)</div></div>
+            <label class="toggle"><input type="checkbox" id="pvNotifPush" ${s.push!==false?'checked':''}><span class="slider"></span></label>
+          </div>
+        </div>
+
         <div class="profile-card">
           <div class="info-row"><span class="ilabel">Signed in with</span><span class="ival">Email</span></div>
           <div class="info-row"><span class="ilabel">Average cycle length</span><span class="ival">${avgCycleText}</span></div>
           <div class="info-row"><span class="ilabel">Periods logged</span><span class="ival">${u.periods.length}</span></div>
         </div>
+
         <div class="profile-card">
           <div class="card-title">CONTACT</div>
           <a href="mailto:supportwomenhood@gmail.com" class="contact-row">
@@ -3037,15 +3069,18 @@ function renderProfile(){
             <div><div class="contact-label">INSTAGRAM</div><div class="contact-val">@womenhood.cycletrack</div></div>
           </a>
         </div>
+
         <div class="profile-card">
           <div class="card-title">FEEDBACK</div>
           <div class="tdesc" style="margin-bottom:12px;">Something not working, or an idea for a feature? Let us know.</div>
           <textarea id="pvFeedbackInput" class="feedback-textarea" placeholder="Type your feedback here..." maxlength="1000"></textarea>
           <button class="save-name-btn" id="pvFeedbackBtn" style="width:100%;margin-top:10px;">Send feedback</button>
         </div>
+
         <button class="logout-card-btn" id="pvLogoutBtn">Log out</button>
         <button class="logout-card-btn" id="pvDeleteBtn" style="margin-top:10px;margin-bottom:80px;">Delete Account</button>
       </div>
+
       <div class="bottom-nav">
         <button class="nav-btn" id="pvNavHome2">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
@@ -3058,14 +3093,31 @@ function renderProfile(){
       </div>
     `;
 
+    // Wire notification toggles (partner's own preferences only)
+    ['Period','Ovulation','Daily','Checkin','Push'].forEach(key => {
+      const el = $('#pvNotif'+key);
+      if(!el) return;
+      el.addEventListener('change', async () => {
+        u.settings = u.settings || {};
+        u.settings[key.toLowerCase()] = el.checked;
+        if(!u.isGuest && u._savedUser?.id){
+          const col = 'notif_'+key.toLowerCase();
+          await sb.from('profiles').update({ [col]: el.checked }).eq('id', u._savedUser.id);
+        }
+      });
+    });
+
     $('#pvNavHome2')?.addEventListener('click', () => {
       $('#profileWrap').style.display = 'none';
       $('#appWrap').style.display = 'flex';
-      // re-hide edit controls
-      ['logStartBtn','logEndBtn'].forEach(id => { const el=$('#'+id); if(el) el.style.display='none'; });
-      $$('.pad-btn, #padMinus, #padPlus').forEach(el => el.style.display='none');
-      const checkInHost = $('#checkInHost');
-      if(checkInHost) checkInHost.innerHTML = '';
+      $$('.nav-btn').forEach(b => b.classList.remove('active'));
+      const navHome = $('#navHome') || $('#navHome2');
+      if(navHome) navHome.classList.add('active');
+      ['logStartBtn','logEndBtn','padMinusBtn','padPlusBtn'].forEach(id => {
+        const el=$('#'+id); if(el) el.style.display='none';
+      });
+      $$('.alert-dismiss-btn').forEach(el => el.style.display='none');
+      if($('#checkInHost')) $('#checkInHost').innerHTML='';
     });
 
     $('#pvFeedbackBtn')?.addEventListener('click', async () => {
@@ -3083,7 +3135,7 @@ function renderProfile(){
       toast('Account deleted.');
     });
 
-    return; // skip main user profile rendering
+    return;
   }
 
   // ── Main user profile (unchanged) ──
@@ -3516,7 +3568,6 @@ async function renderPartnerView(linkId){
   const snap = await readPartnerSnapshot(linkId);
 
   if (!snap){
-    // show in appWrap style
     $('#authWrap').style.display = 'none';
     $('#partnerViewWrap').style.display = 'none';
     $('#profileWrap').style.display = 'none';
@@ -3527,43 +3578,53 @@ async function renderPartnerView(linkId){
     return;
   }
 
-  // ── Swap currentUser to partner's data ──
-  const savedUser = currentUser;
-  const partnerEmail = savedUser?.identifier || '';
-  const partnerLogout = async () => {
-    clearInterval(partnerPollTimer);
-    currentUser = savedUser;
-    await sb.auth.signOut();
-    currentUser = null;
-    authState = { step:'choose', identifier:'' };
-    showOnlyAuth(); render();
-  };
-
-  currentUser = {
-    _isPartnerView: true,
-    _partnerRealEmail: partnerEmail,
-    _partnerLogout: partnerLogout,
-    _savedUser: savedUser,
-    id: snap.ownerId || null,
-    identifier: partnerEmail,
-    isGuest: false,
-    method: 'email',
-    name: snap.name,
-    avatarColor: 'rose',
-    avatarPhoto: null,
-    periods: snap.periods || [],
-    avgCycle: snap.avgCycle || 28,
-    padStock: snap.padStock ?? 0,
-    partnerLinkId: null,
-    notifications: savedUser?.notifications || [],
-    settings: savedUser?.settings || { period:true, ovulation:true, daily:false, lowStock:true, checkin:true, push:true },
-    checkIn: { startDelayDays:0, startLastAskedDate:null, endDelayDays:0, endLastAskedDate:null },
-    _dismissedAlerts: {},
-  };
+  // Save real partner identity
+  if (!currentUser._isPartnerView) {
+    const savedUser = currentUser;
+    const partnerEmail = savedUser?.identifier || '';
+    const partnerLogout = async () => {
+      clearInterval(partnerPollTimer);
+      currentUser = savedUser;
+      await sb.auth.signOut();
+      currentUser = null;
+      authState = { step:'choose', identifier:'' };
+      showOnlyAuth(); render();
+    };
+    currentUser = {
+      _isPartnerView: true,
+      _partnerRealEmail: partnerEmail,
+      _partnerLogout: partnerLogout,
+      _savedUser: savedUser,
+      id: snap.ownerId || null,
+      identifier: partnerEmail,
+      isGuest: false,
+      method: 'email',
+      name: snap.name,
+      avatarColor: savedUser?.avatarColor || 'rose',
+      avatarPhoto: savedUser?.avatarPhoto || null,
+      periods: snap.periods || [],
+      avgCycle: snap.avgCycle || 28,
+      padStock: snap.padStock ?? 0,
+      partnerLinkId: null,
+      notifications: savedUser?.notifications || [],
+      settings: savedUser?.settings || { period:true, ovulation:true, daily:false, lowStock:true, checkin:true, push:true },
+      checkIn: { startDelayDays:0, startLastAskedDate:null, endDelayDays:0, endLastAskedDate:null },
+      _dismissedAlerts: {},
+    };
+  } else {
+    // Update snap data only
+    currentUser.name = snap.name;
+    currentUser.periods = snap.periods || [];
+    currentUser.avgCycle = snap.avgCycle || 28;
+    currentUser.padStock = snap.padStock ?? 0;
+  }
 
   setTheme(snap.phaseKey || 'follicular');
 
-  // ── Show appWrap (main UI) ──
+  // Only re-render home if profile is not open
+  const profileOpen = $('#profileWrap').style.display === 'flex';
+  if (profileOpen) return; // don't disturb profile tab
+
   $('#authWrap').style.display    = 'none';
   $('#partnerViewWrap').style.display = 'none';
   $('#profileWrap').style.display = 'none';
@@ -3572,75 +3633,77 @@ async function renderPartnerView(linkId){
   $('#appWrap').style.display     = 'flex';
   $('#headerSignInBtn').style.display = 'none';
 
-  // ── Render using EXACT SAME functions ──
   renderCycle();
-
-  // ── Override greeting ──
   $('#greetingText').innerHTML = `Hi, <strong>${escapeHtml(snap.name)}'s Partner 👋</strong>`;
 
-  // ── Add "Partner's View" badge with card outline ──
+  // Badge
   if (!$('#pvBadge')){
     const badge = document.createElement('div');
     badge.id = 'pvBadge';
     badge.textContent = "Partner's View";
-    badge.style.cssText = 'font-size:0.68rem;font-weight:700;color:var(--accent);background:#fff;padding:4px 10px;border-radius:20px;border:1.5px solid var(--accent);margin-right:8px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.08);letter-spacing:0.02em;';
+    badge.style.cssText = 'font-size:0.68rem;font-weight:700;color:var(--accent);background:#fff;padding:4px 10px;border-radius:20px;border:1.5px solid var(--accent);margin-right:8px;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.08);';
     $('#bellBtn').parentNode.insertBefore(badge, $('#bellBtn'));
   }
 
-  // ── HIDE all editing controls ──
-  const hideIds = ['logStartBtn','logEndBtn','padMinusBtn','padPlusBtn'];
-  hideIds.forEach(id => { const el = $('#'+id); if(el) el.style.display='none'; });
+  // Hide all editing controls
+  ['logStartBtn','logEndBtn','padMinusBtn','padPlusBtn'].forEach(id => {
+    const el = $('#'+id); if(el) el.style.display='none';
+  });
   $$('.alert-dismiss-btn').forEach(el => el.style.display='none');
   const checkInHost = $('#checkInHost');
   if(checkInHost) checkInHost.innerHTML = '';
 
-  // ── Disable history item taps (no detail view for partner) ──
+  // Disable history taps
   $$('#historyList .history-item').forEach(btn => {
     const nb = btn.cloneNode(true);
-    nb.style.cssText += ';cursor:default;pointer-events:none;';
+    nb.style.pointerEvents = 'none';
+    nb.style.cursor = 'default';
     const chev = nb.querySelector('.chev');
     if(chev) chev.style.display = 'none';
     btn.parentNode.replaceChild(nb, btn);
   });
 
-  // ── Pad card: hide +/- buttons only, keep UI exactly same ──
-  const padMinusBtn = $('#padMinusBtn');
-  const padPlusBtn = $('#padPlusBtn');
-  if(padMinusBtn) padMinusBtn.style.display = 'none';
-  if(padPlusBtn) padPlusBtn.style.display = 'none';
+  // Override nav buttons (only once)
+  if (!window._pvNavWired) {
+    window._pvNavWired = true;
 
-    // ── Override navProfile to stay stable in partner view ──
-  const pvShowProfile = () => {
-    $('#appWrap').style.display = 'none';
-    $('#profileWrap').style.display = 'flex';
-    renderProfile();
-  };
-  // replace nav handlers for partner
-  ['navProfile','navProfile2'].forEach(id => {
-    const btn = $('#'+id);
-    if(btn){
-      const nb = btn.cloneNode(true);
-      btn.parentNode.replaceChild(nb, btn);
-      nb.addEventListener('click', pvShowProfile);
-    }
-  });
-  ['navHome','navHome2'].forEach(id => {
-    const btn = $('#'+id);
-    if(btn){
-      const nb = btn.cloneNode(true);
-      btn.parentNode.replaceChild(nb, btn);
-      nb.addEventListener('click', () => {
-        $('#profileWrap').style.display='none';
-        $('#appWrap').style.display='flex';
-        $('#greetingText').innerHTML = `Hi, <strong>${escapeHtml(snap.name)}'s Partner 👋</strong>`;
-        const hids = ['logStartBtn','logEndBtn','padMinusBtn','padPlusBtn'];
-        hids.forEach(id2 => { const el=$('#'+id2); if(el) el.style.display='none'; });
-        $$('.alert-dismiss-btn').forEach(el => el.style.display='none');
-        if($('#checkInHost')) $('#checkInHost').innerHTML='';
-      });
-    }
-  });
+    ['navProfile','navProfile2'].forEach(id => {
+      const btn = $('#'+id);
+      if(btn){
+        const nb = btn.cloneNode(true);
+        btn.parentNode.replaceChild(nb, btn);
+        nb.addEventListener('click', () => {
+          $('#appWrap').style.display = 'none';
+          $('#profileWrap').style.display = 'flex';
+          $$('.nav-btn').forEach(b => b.classList.remove('active'));
+          nb.classList.add('active');
+          renderProfile();
+        });
+      }
+    });
+
+    ['navHome','navHome2'].forEach(id => {
+      const btn = $('#'+id);
+      if(btn){
+        const nb = btn.cloneNode(true);
+        btn.parentNode.replaceChild(nb, btn);
+        nb.addEventListener('click', () => {
+          $('#profileWrap').style.display = 'none';
+          $('#appWrap').style.display = 'flex';
+          $$('.nav-btn').forEach(b => b.classList.remove('active'));
+          nb.classList.add('active');
+          $('#greetingText').innerHTML = `Hi, <strong>${escapeHtml(currentUser.name)}'s Partner 👋</strong>`;
+          ['logStartBtn','logEndBtn','padMinusBtn','padPlusBtn'].forEach(i => {
+            const el=$('#'+i); if(el) el.style.display='none';
+          });
+          $$('.alert-dismiss-btn').forEach(el => el.style.display='none');
+          if($('#checkInHost')) $('#checkInHost').innerHTML='';
+        });
+      }
+    });
+  }
 }
+
 
 
 function formatRelativeTime(iso){
